@@ -6,7 +6,7 @@
 \SV
    m4_makerchip_module   // (Expanded in Nav-TLV pane.)
 \TLV
-   m4+cal_viz(@4)
+   m4+cal_viz(@4) // viz macro
    |calc
       @0
          $reset = *reset;
@@ -16,11 +16,12 @@
          $valid_or_reset = $valid || $reset;
          
       ?$valid_or_reset
+         // All signals within this condition are invalidated on reset.
          @1
             // CALCULATOR LOGIC
-            $op[1:0] = $rand[1:0];
-            $val1[31:0] = $reset ? 0 : >>2$out;
-            $val2[31:0] = $reset ? 0 : $rand1[3:0];
+            $op[2:0] = $rand[2:0];
+            $val1[31:0] = >>2$out;
+            $val2[31:0] = $rand1[3:0];
 
             $sum[31:0] = $val1 + $val2;
             $diff[31:0] = $val1 - $val2;
@@ -28,12 +29,14 @@
             $quot[31:0] = $val1 / $val2;
             
          @2 
+            $mem[31:0] = ($op == 5) ? >>2$val1 : >>2$mem;
+            
             $out[31:0] = ($op == 0) ?  $sum  :
                          ($op == 1) ?  $diff :
                          ($op == 2) ?  $prod :
-                                       $quot ;
+                         ($op == 3) ?  $quot :
+                         >>2$mem;
    *passed = *cyc_cnt > 40;
    *failed = 1'b0;
 \SV
    endmodule
-

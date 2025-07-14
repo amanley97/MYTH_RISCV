@@ -41,10 +41,16 @@
       @0
          $reset = *reset;
          
+         // CLOCK VALIDITY
+         $start = >>1$reset && !$reset;
+         $valid = $reset ? 1'b0 :
+                  $start ? 1'b1 :
+                  >>3$valid;
+         
          // PROGRAM COUNTER
-         $pc[31:0] = >>1$reset    ? 32'd0         :
-                     >>1$taken_br ? >>1$br_tgt_pc :
-                     >>1$inc_pc;
+         $pc[31:0] = >>1$reset          ? 32'd0         :
+                     >>3$valid_taken_br ? >>3$br_tgt_pc :
+                     >>3$inc_pc;
          
          // INSTRUCTION MEMORY
          $imem_rd_en = !$reset; //enable reads when not reset.
@@ -111,7 +117,8 @@
          // INTEGER INSTRUCTIONS
          $is_add  = $dec_bits ==? 11'b0_000_0110011; //integer ADD instruction. 
          $is_addi = $dec_bits ==? 11'bx_000_0010011; //integer ADD IMMEDIATE instruction. 
-         
+      
+      @2
          // REGISTER FILE READ
          $rf_rd_en1 = $rs1_valid;
          $rf_rd_index1[4:0] = $rs1;
@@ -119,10 +126,14 @@
          $rf_rd_en2 = $rs2_valid;
          $rf_rd_index2[4:0] = $rs2;
          
-         // ALU EXECUTE
+         // COMPUTE TARGET BRANCH
+         $br_tgt_pc[31:0] = $pc + $imm;
+         
+         // ALU SOURCES
          $src1_value[31:0] = $rf_rd_data1;
          $src2_value[31:0] = $rf_rd_data2;
-         
+      @3
+         // ALU EXECUTE
          $result[31:0] =
             $is_addi ? $src1_value + $imm :
             $is_add  ? $src1_value + $src2_value :
@@ -135,17 +146,20 @@
                      $is_bltu ? ($src1_value < $src2_value)  : //bitwise ops in verilog default to unsigned.
                      $is_bgeu ? ($src1_value >= $src2_value) :
                      1'b0;
-         
-         $br_tgt_pc[31:0] = $pc + $imm;
+         $valid_taken_br = $valid && $taken_br;
          
          // REGISTER FILE WRITE
-         $rf_wr_en = $rd_valid && ($rd != 5'b0); //ensure that writes have a destination and NOT x0.
+         $rf_wr_en = $valid && $rd_valid && ($rd != 5'b0); //ensure that writes have a destination and NOT x0.
          $rf_wr_index[4:0] = $rd;
          $rf_wr_data[31:0] = $result;
-      @2
 
-   *passed = |cpu/xreg[10]>>5$value == (1+2+3+4+5+6+7+8+9);
-   //*passed = *cyc_cnt > 40; UNCOMMENT to end simulation by cycle 40 (before Makerchip cycle limit).
+      // Note: Because of the magic we are using for visualisation, if visualisation is enabled below,
+      //       be sure to avoid having unassigned signals (which you might be using for random inputs)
+      //       other than those specifically expected in the labs. You'll get strange errors for these.
+
+   *passed = |cpu/xreg[10]>>6$value == (1+2+3+4+5+6+7+8+9);
+   // Assert these to end simulation (before Makerchip cycle limit).
+   //*passed = *cyc_cnt > 40;
    *failed = 1'b0;
    
    // Macro instantiations for:
@@ -155,7 +169,7 @@
    //  o CPU visualization
    |cpu
       m4+imem(@1)    // Args: (read stage)
-      m4+rf(@1, @1)  // Args: (read stage, write stage) - if equal, no register bypass is required
+      m4+rf(@2, @3)  // Args: (read stage, write stage) - if equal, no register bypass is required
       //m4+dmem(@4)    // Args: (read/write stage)
 
    m4+cpu_viz(@4)    // For visualisation, argument should be at least equal to the last stage of CPU logic. @4 would work for all labs.
